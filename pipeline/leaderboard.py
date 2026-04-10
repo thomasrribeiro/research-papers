@@ -52,6 +52,10 @@ RECENT_WINDOW_YEARS = 2
 MAX_PLAUSIBLE_CITATIONS = 450_000  # hard ceiling — above this it's a data-aggregation error
 # Age-aware cap: even the fastest-growing real papers don't exceed ~25k cites/year.
 # Floor of 80k protects very-recent breakthrough papers.
+# Momentum minimum: paper must receive at least this many citations in the recent
+# window to qualify. Filters out "accelerating from obscurity" (Mann-Kendall 1945
+# with 1500 recent cites beats AIAYN on ratio but is not momentum-relevant).
+MIN_RECENT_CITATIONS = 3_000
 _HTML_TAG_RE = re.compile(r'<[^>]+>')
 
 
@@ -242,12 +246,16 @@ def _compute_momentum_score(paper: dict) -> float:
         for entry in counts
         if recent_cutoff <= (entry.get('year') or 0) < current_year
     )
-    if recent_citations == 0:
-        return 0.0
+    if recent_citations < MIN_RECENT_CITATIONS:
+        return 0.0  # too quiet — not momentum-relevant
 
     velocity = recent_citations / RECENT_WINDOW_YEARS
     avg_hist = total / years_old
     momentum = velocity / max(avg_hist, 1.0)
+    # Cap momentum ratio at 3x: prevents old papers with tiny historical baselines
+    # from scoring higher than consistently-popular landmark papers (e.g. Mann-Kendall
+    # 1945 shouldn't beat AIAYN/BERT just because it went from 50→1000 cites/yr).
+    momentum = min(momentum, 3.0)
 
     hot = math.log1p(recent_citations)
     return hot * math.sqrt(max(momentum, 0.1))
