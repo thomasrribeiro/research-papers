@@ -437,6 +437,45 @@ async def load_landmark_seeds() -> list[dict]:
     return papers
 
 
+async def _enrich_with_openalex_counts(papers: list[dict]) -> None:
+    """
+    For S2-only / seed papers that have a DOI but empty counts_by_year, do a
+    targeted OpenAlex lookup to get per-year citation data. This is required so
+    papers like AIAYN, BERT, and AlphaFold2 (which arrive via S2 with no yearly
+    breakdown) can receive a momentum score.
+    """
+    needs = [p for p in papers if p.get('doi') and not p.get('counts_by_year')]
+    if not needs:
+        return
+
+    logger.info(f'OpenAlex counts enrichment: {len(needs)} S2/seed papers')
+    select_fields = 'id,cited_by_count,counts_by_year'
+
+    async with httpx.AsyncClient(
+        timeout=30.0,
+        headers={'User-Agent': f'ResearchPapersPipeline/1.0 (mailto:{OPENALEX_EMAIL})'}
+    ) as client:
+        for p in needs:
+            doi = p['doi']
+            try:
+                resp = await client.get(
+                    f'{OPENALEX_URL}/https://doi.org/{doi}',
+                    params={'select': select_fields, 'mailto': OPENALEX_EMAIL},
+                )
+                if resp.status_code == 404:
+                    logger.debug(f'OpenAlex: DOI not found: {doi}')
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                counts = data.get('counts_by_year') or []
+                if counts:
+                    p['counts_by_year'] = counts
+                    logger.debug(f'OA counts enriched: {p["title"][:60]!r}')
+            except httpx.HTTPError as e:
+                logger.warning(f'OA counts enrichment failed for {doi}: {e}')
+            await asyncio.sleep(0.5)  # polite pool
+
+
 async def fetch_candidate_pool() -> list[dict]:
     """
     Merge OpenAlex + Semantic Scholar discovery pools + curated landmark seeds,
@@ -461,6 +500,10 @@ async def fetch_candidate_pool() -> list[dict]:
     s2_only = [p for p in s2_papers if not _is_in_oa(p)]
     seed_only = [p for p in seed_papers if not _is_in_oa(p) and
                  p['id'].lower() not in {x['id'].lower() for x in s2_only}]
+
+    # For S2-only and seed-only papers that lack per-year citation data, fetch it
+    # from OpenAlex by DOI so the momentum score can be computed.
+    await _enrich_with_openalex_counts(s2_only + seed_only)
 
     merged = openalex_papers + s2_only + seed_only
     logger.info(

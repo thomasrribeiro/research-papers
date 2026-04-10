@@ -25,6 +25,19 @@ RATE_LIMIT_FREE = 1.0   # seconds between requests without API key
 RATE_LIMIT_KEYED = 0.1  # seconds with API key
 
 
+def _make_s2_ref(paper_id: str) -> str:
+    """Map an internal paper ID to the Semantic Scholar reference format.
+
+    DOIs always start with '10.' — everything else is treated as an arXiv ID.
+    S2 IDs (prefixed 'S2:') are stripped to raw hash.
+    """
+    if paper_id.startswith('10.'):
+        return f'DOI:{paper_id}'
+    if paper_id.startswith('S2:'):
+        return paper_id[3:]
+    return f'ARXIV:{paper_id}'
+
+
 async def enrich_papers(papers: list[dict]) -> list[dict]:
     """
     Add citation_count, citation_velocity, influential_citations,
@@ -34,26 +47,33 @@ async def enrich_papers(papers: list[dict]) -> list[dict]:
     delay = RATE_LIMIT_KEYED if SEMANTIC_SCHOLAR_API_KEY else RATE_LIMIT_FREE
     headers = {'x-api-key': SEMANTIC_SCHOLAR_API_KEY} if SEMANTIC_SCHOLAR_API_KEY else {}
 
-    # Build lookup: arxiv_id -> paper
+    # Build two lookups:
+    #   id_to_paper: internal paper ID (arxiv_id or doi-as-id) → paper
+    #   doi_to_paper: normalised DOI → paper (for DOI-based matches in S2 response)
     id_to_paper: dict[str, dict] = {}
+    doi_to_paper: dict[str, dict] = {}
     for p in papers:
-        arxiv_id = p.get('arxiv_id') or p.get('id')
-        if arxiv_id:
-            id_to_paper[arxiv_id] = p
+        paper_id = p.get('arxiv_id') or p.get('id')
+        if paper_id:
+            id_to_paper[paper_id] = p
             # Initialise defaults so graceful degradation works
             p.setdefault('citation_count', 0)
             p.setdefault('citation_velocity', 0.0)
             p.setdefault('influential_citations', 0)
             p.setdefault('fields_of_study', [])
             p.setdefault('h_index_avg', 0.0)
+        doi = (p.get('doi') or '').lower()
+        if doi:
+            doi_to_paper[doi] = p
 
-    arxiv_ids = list(id_to_paper.keys())
-    logger.info(f'Enriching {len(arxiv_ids)} papers from Semantic Scholar')
+    all_ids = list(id_to_paper.keys())
+    logger.info(f'Enriching {len(all_ids)} papers from Semantic Scholar')
 
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        for i in range(0, len(arxiv_ids), BATCH_SIZE):
-            batch_ids = arxiv_ids[i:i + BATCH_SIZE]
-            s2_ids = [f'ARXIV:{aid}' for aid in batch_ids]
+        for i in range(0, len(all_ids), BATCH_SIZE):
+            batch_ids = all_ids[i:i + BATCH_SIZE]
+            # Use DOI: prefix for DOI-based IDs (bioRxiv), ARXIV: otherwise
+            s2_ids = [_make_s2_ref(bid) for bid in batch_ids]
 
             try:
                 resp = await client.post(
@@ -79,11 +99,19 @@ async def enrich_papers(papers: list[dict]) -> list[dict]:
             for item in results:
                 if not item:
                     continue
-                arxiv_ext = (item.get('externalIds') or {}).get('ArXiv')
-                if not arxiv_ext or arxiv_ext not in id_to_paper:
-                    continue
+                ext_ids = item.get('externalIds') or {}
+                arxiv_ext = ext_ids.get('ArXiv')
+                doi_ext = (ext_ids.get('DOI') or '').lower()
 
-                paper = id_to_paper[arxiv_ext]
+                # Match by ArXiv ID first, then by DOI (covers bioRxiv papers whose
+                # internal id *is* the DOI, e.g. '10.1101/759852')
+                paper = None
+                if arxiv_ext:
+                    paper = id_to_paper.get(arxiv_ext)
+                if paper is None and doi_ext:
+                    paper = doi_to_paper.get(doi_ext) or id_to_paper.get(doi_ext)
+                if paper is None:
+                    continue
                 paper['citation_count'] = item.get('citationCount') or 0
                 paper['influential_citations'] = item.get('influentialCitationCount') or 0
                 paper['fields_of_study'] = item.get('fieldsOfStudy') or []
