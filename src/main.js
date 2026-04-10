@@ -3,7 +3,7 @@
  * Routes: #/ (feed), #/paper/:id (detail), #/trends, #/settings
  */
 
-import { fetchStats, fetchCategories, triggerPipeline } from './api.js';
+import { fetchStats, fetchCategories } from './api.js';
 import { initFeed } from './feed.js';
 import { initPaperDetail } from './paper-detail.js';
 import { initTrends } from './trends.js';
@@ -120,44 +120,6 @@ async function route() {
     }
 }
 
-// Run Now button
-function initRunNow() {
-    const btn = document.getElementById('run-now-btn');
-    const msg = document.getElementById('run-now-msg');
-    if (!btn) return;
-
-    btn.addEventListener('click', async () => {
-        const key = localStorage.getItem('rp_pipeline_key');
-        if (!key) {
-            const entered = prompt('Enter your pipeline key (saved in Settings):');
-            if (!entered) return;
-            localStorage.setItem('rp_pipeline_key', entered);
-        }
-
-        btn.disabled = true;
-        btn.textContent = 'Triggering...';
-        msg.textContent = '';
-        msg.className = 'run-now-msg';
-
-        try {
-            await triggerPipeline(localStorage.getItem('rp_pipeline_key'));
-            msg.textContent = 'Pipeline started — check back in ~10 min.';
-            msg.className = 'run-now-msg ok';
-            btn.textContent = 'Triggered!';
-            setTimeout(() => {
-                btn.disabled = false;
-                btn.textContent = 'Run now';
-            }, 30000); // prevent double-triggering for 30s
-        } catch (err) {
-            msg.textContent = err.message.includes('401') ? 'Wrong key.' : err.message;
-            msg.className = 'run-now-msg err';
-            btn.disabled = false;
-            btn.textContent = 'Run now';
-            if (err.message.includes('401')) localStorage.removeItem('rp_pipeline_key');
-        }
-    });
-}
-
 // Theme toggle
 function initTheme() {
     const saved = localStorage.getItem('rp_theme') || 'dark';
@@ -173,6 +135,5 @@ function initTheme() {
 // Init
 window.addEventListener('hashchange', route);
 initTheme();
-initRunNow();
 loadSidebar();
 route();

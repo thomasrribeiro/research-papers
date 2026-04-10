@@ -69,14 +69,6 @@ export function initSettings(app) {
             </div>
 
             <div class="settings-section">
-                <div class="settings-section-title">Pipeline Key</div>
-                <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Used by the "Run now" button to trigger the pipeline on demand.</div>
-                <input type="password" id="pipeline-key-input" style="background:var(--bg2);border:1px solid var(--card-border);color:var(--text);font-family:inherit;font-size:12px;padding:6px 10px;border-radius:3px;outline:none;width:100%;margin-bottom:6px" placeholder="Pipeline key..." value="${escapeHtml(localStorage.getItem('rp_pipeline_key') || '')}">
-                <button class="settings-save-btn" id="save-key-btn" style="margin-top:0">Save key</button>
-                <div id="key-save-msg" style="margin-top:6px;font-size:11px;color:#4caf50;display:none">Key saved.</div>
-            </div>
-
-            <div class="settings-section">
                 <div class="settings-section-title">Daily Digest Email</div>
                 <div style="font-size:11px;color:var(--text3)">Coming soon — enter your email to receive a daily summary.</div>
                 <input type="email" style="margin-top:8px;background:var(--bg2);border:1px solid var(--card-border);color:var(--text);font-family:inherit;font-size:12px;padding:6px 10px;border-radius:3px;outline:none;width:240px" placeholder="your@email.com" disabled>
@@ -106,16 +98,6 @@ export function initSettings(app) {
                     selectedCats = selectedCats.filter(c => c !== cat);
                 }
             });
-        });
-
-        // Save pipeline key
-        app.querySelector('#save-key-btn')?.addEventListener('click', () => {
-            const key = app.querySelector('#pipeline-key-input')?.value.trim();
-            if (key) localStorage.setItem('rp_pipeline_key', key);
-            else localStorage.removeItem('rp_pipeline_key');
-            const msg = app.querySelector('#key-save-msg');
-            msg.style.display = 'block';
-            setTimeout(() => { msg.style.display = 'none'; }, 2000);
         });
 
         // Save
