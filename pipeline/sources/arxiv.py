@@ -15,7 +15,7 @@ from config import ARXIV_CATEGORIES, ARXIV_LOOKBACK_HOURS
 
 logger = logging.getLogger(__name__)
 
-ARXIV_API_URL = 'http://export.arxiv.org/api/query'
+ARXIV_API_URL = 'https://export.arxiv.org/api/query'
 BATCH_SIZE = 100  # max arXiv returns per request
 RATE_LIMIT_DELAY = 3.0  # seconds between requests (arXiv asks for ≥3s)
 
