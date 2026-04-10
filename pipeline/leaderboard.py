@@ -9,6 +9,7 @@ Uses OpenAlex (no API key required) via the polite-pool email header.
 import asyncio
 import logging
 import math
+import re
 from datetime import date
 
 import httpx
@@ -20,12 +21,9 @@ logger = logging.getLogger(__name__)
 OPENALEX_URL = 'https://api.openalex.org/works'
 RESULTS_PER_CONCEPT = 200  # fetch a larger pool so momentum has candidates outside the raw top-50
 
-# Momentum score weights (see README below)
-W_LANDMARK = 0.35
-W_HOT = 0.40
-W_MOMENTUM = 0.25
-MOMENTUM_CLAMP = 5.0   # cap acceleration ratio
 RECENT_WINDOW_YEARS = 2
+MAX_PLAUSIBLE_CITATIONS = 450_000  # OpenAlex occasionally has data-aggregation glitches; no real paper exceeds this
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
 
 
 def _reconstruct_abstract(inverted_index: dict | None) -> str:
@@ -41,7 +39,7 @@ def _reconstruct_abstract(inverted_index: dict | None) -> str:
 
 def _parse_openalex_work(work: dict) -> dict | None:
     """Convert an OpenAlex work dict to our standard paper dict."""
-    title = (work.get('title') or '').strip()
+    title = _HTML_TAG_RE.sub('', (work.get('title') or '')).strip()
     if not title:
         return None
 
@@ -79,6 +77,9 @@ def _parse_openalex_work(work: dict) -> dict | None:
         pdf_url = f'https://doi.org/{doi}'
 
     citation_count = work.get('cited_by_count', 0) or 0
+    if citation_count > MAX_PLAUSIBLE_CITATIONS:
+        logger.warning(f'Dropping suspected data error: {title[:60]!r} has {citation_count} cites')
+        return None
 
     # Yearly breakdown — list of {year, cited_by_count}
     counts_by_year = work.get('counts_by_year') or []
@@ -103,21 +104,24 @@ def _parse_openalex_work(work: dict) -> dict | None:
 
 def _compute_momentum_score(paper: dict) -> float:
     """
-    Composite score for the Momentum list.
+    Multiplicative score rewarding papers that are both currently hot AND
+    outpacing their own historical average.
 
-    landmark   = log(1 + total_citations)           # foundational weight
-    hot        = log(1 + citations_last_2y)         # currently-hot weight
-    velocity   = citations_last_2y / 2              # per year, recent
-    avg_hist   = total_citations / years_old        # per year, lifetime avg
-    momentum   = velocity / max(avg_hist, 1)        # acceleration ratio (>1 = gaining)
+    hot      = log1p(recent_citations_last_2y)     # absolute heat
+    velocity = recent_citations / RECENT_WINDOW_YEARS  # per-year, recent
+    avg_hist = total_citations / years_old          # per-year, lifetime avg
+    momentum = velocity / avg_hist                  # acceleration ratio
 
-    score = 0.35*landmark + 0.40*hot + 0.25*log(1 + min(momentum, 5))
+    score    = hot × sqrt(max(momentum, 0.1))
+
+    Neither term can dominate: a paper must be hot AND have momentum.
+    sqrt(momentum) softens the penalty for steady classics (~1.0 ratio)
+    while strongly depressing decelerating work (ratio ~0.1-0.3).
     """
     total = paper.get('citation_count', 0) or 0
-    if total <= 0:
+    if total < 1000:
         return 0.0
 
-    # Publication year
     pub_date = paper.get('published_date') or ''
     try:
         pub_year = int(pub_date[:4]) if pub_date else date.today().year
@@ -126,8 +130,10 @@ def _compute_momentum_score(paper: dict) -> float:
 
     current_year = date.today().year
     years_old = max(1, current_year - pub_year)
+    if years_old < 2:
+        return 0.0
 
-    # Citations in the last RECENT_WINDOW_YEARS *complete* years (exclude current partial year)
+    # Sum citations in the last RECENT_WINDOW_YEARS *complete* years (exclude current partial year)
     counts = paper.get('counts_by_year') or []
     recent_cutoff = current_year - RECENT_WINDOW_YEARS  # e.g., 2024 if current is 2026
     recent_citations = sum(
@@ -135,16 +141,15 @@ def _compute_momentum_score(paper: dict) -> float:
         for entry in counts
         if recent_cutoff <= (entry.get('year') or 0) < current_year
     )
+    if recent_citations == 0:
+        return 0.0
 
     velocity = recent_citations / RECENT_WINDOW_YEARS
     avg_hist = total / years_old
     momentum = velocity / max(avg_hist, 1.0)
 
-    landmark = math.log1p(total)
     hot = math.log1p(recent_citations)
-    momentum_term = math.log1p(min(momentum, MOMENTUM_CLAMP))
-
-    return (W_LANDMARK * landmark) + (W_HOT * hot) + (W_MOMENTUM * momentum_term)
+    return hot * math.sqrt(max(momentum, 0.1))
 
 
 async def fetch_candidate_pool() -> list[dict]:
@@ -166,7 +171,7 @@ async def fetch_candidate_pool() -> list[dict]:
         for concept_id in LEADERBOARD_CONCEPTS:
             params = {
                 'sort': 'cited_by_count:desc',
-                'filter': f'concepts.id:{concept_id},is_paratext:false',
+                'filter': f'concepts.id:{concept_id},is_paratext:false,type:article',
                 'per-page': RESULTS_PER_CONCEPT,
                 'select': select_fields,
                 'mailto': OPENALEX_EMAIL,
