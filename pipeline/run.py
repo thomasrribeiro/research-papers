@@ -3,7 +3,7 @@ Daily pipeline orchestrator.
 
 Steps:
 1. Log pipeline start
-2. Fetch papers from arXiv (last 48h)
+2. Fetch papers from arXiv + bioRxiv + medRxiv (last 48h)
 3. Enrich with Semantic Scholar (citation data, author h-index)
 4. Enrich with OpenAlex (concept tags)
 5. Enrich with Altmetric (social attention scores)
@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from config import DAILY_TOP_N, ARXIV_LOOKBACK_HOURS, LEADERBOARD_SIZE
 from sources.arxiv import fetch_recent_papers
+from sources.biorxiv import fetch_recent_papers as fetch_biorxiv_papers
 from sources.semantic_scholar import enrich_papers as enrich_semantic_scholar
 from sources.openalex import enrich_papers as enrich_openalex
 from sources.altmetric import enrich_papers as enrich_altmetric
@@ -56,11 +57,21 @@ async def run_pipeline():
         run_id = await log_pipeline_start()
         logger.info(f'Pipeline run ID: {run_id}')
 
-        # Step 2: Fetch from arXiv
-        logger.info(f'Step 1/7: Fetching arXiv papers (last {ARXIV_LOOKBACK_HOURS}h)')
-        papers = await fetch_recent_papers(lookback_hours=ARXIV_LOOKBACK_HOURS)
+        # Step 2: Fetch from arXiv + bioRxiv + medRxiv (in parallel)
+        logger.info(f'Step 1/7: Fetching papers (last {ARXIV_LOOKBACK_HOURS}h) from arXiv + bioRxiv + medRxiv')
+        arxiv_papers, biorxiv_papers = await asyncio.gather(
+            fetch_recent_papers(lookback_hours=ARXIV_LOOKBACK_HOURS),
+            fetch_biorxiv_papers(lookback_hours=ARXIV_LOOKBACK_HOURS),
+        )
+        # Merge, deduplicating by DOI
+        arxiv_doi_set = {p['doi'] for p in arxiv_papers if p.get('doi')}
+        bio_deduped = [p for p in biorxiv_papers if p.get('doi') not in arxiv_doi_set]
+        papers = arxiv_papers + bio_deduped
         stats['papers_fetched'] = len(papers)
-        logger.info(f'Fetched {len(papers)} unique papers')
+        logger.info(
+            f'Fetched {len(arxiv_papers)} arXiv + {len(bio_deduped)} bioRxiv/medRxiv '
+            f'= {len(papers)} total unique papers'
+        )
 
         if not papers:
             logger.warning('No papers fetched — aborting pipeline')

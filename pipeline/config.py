@@ -36,6 +36,7 @@ SEED_LOOKBACK_DAYS: int = int(os.environ.get('SEED_LOOKBACK_DAYS', '30'))
 LEADERBOARD_SIZE: int = int(os.environ.get('LEADERBOARD_SIZE', '50'))
 # OpenAlex concept IDs to cover the same domains as arXiv categories
 LEADERBOARD_CONCEPTS: list[str] = [
+    # Broad fields
     'C154945302',  # Artificial intelligence
     'C119857082',  # Machine learning
     'C41008148',   # Computer science
@@ -45,6 +46,11 @@ LEADERBOARD_CONCEPTS: list[str] = [
     'C162324750',  # Economics / Finance
     'C71924100',   # Medicine
     'C138496267',  # Statistics
+    # ML sub-fields where landmark papers concentrate
+    'C108583219',  # Deep learning
+    'C50644808',   # Artificial neural network
+    'C31972630',   # Computer vision
+    'C204321447',  # Natural language processing
 ]
 
 # Claude model for summarization
