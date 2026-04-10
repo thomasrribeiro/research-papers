@@ -41,3 +41,15 @@ export function fetchCategories() {
 export function fetchStats() {
     return get('/api/stats');
 }
+
+export async function triggerPipeline(pipelineKey) {
+    const resp = await fetch(`${WORKER_URL}/api/trigger`, {
+        method: 'POST',
+        headers: { 'X-Pipeline-Key': pipelineKey }
+    });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+}
