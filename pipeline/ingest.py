@@ -104,6 +104,24 @@ async def push_digest(date: str, ranked_papers: list[dict]) -> int:
     return result.get('inserted', 0)
 
 
+async def push_leaderboard(snapshot_date: str, ranked_papers: list[dict]) -> int:
+    """Push leaderboard snapshot to /api/ingest/leaderboard."""
+    entries = [
+        {
+            'paper_id': p.get('arxiv_id') or p.get('id'),
+            'rank': i + 1,
+            'citation_count': p.get('citation_count', 0)
+        }
+        for i, p in enumerate(ranked_papers)
+    ]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        result = await _post_with_retry(
+            client, '/api/ingest/leaderboard',
+            {'snapshot_date': snapshot_date, 'entries': entries}
+        )
+    return result.get('inserted', 0)
+
+
 async def log_pipeline_start() -> int:
     """Log pipeline start. Returns run_id."""
     async with httpx.AsyncClient(timeout=10.0) as client:

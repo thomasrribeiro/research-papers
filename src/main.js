@@ -5,6 +5,7 @@
 
 import { fetchStats, fetchCategories } from './api.js';
 import { initFeed } from './feed.js';
+import { initLeaderboard } from './leaderboard.js';
 import { initPaperDetail } from './paper-detail.js';
 import { initTrends } from './trends.js';
 import { initSettings } from './settings.js';
@@ -69,8 +70,8 @@ async function loadSidebar() {
                 const top10 = (catData.categories || []).slice(0, 10);
                 catList.innerHTML = top10.map(c => `
                     <div class="cat-item">
-                        <input type="checkbox" checked data-cat="${c.category}">
-                        <span>${c.category} <span style="color:var(--text3)">(${c.count})</span></span>
+                        <input type="checkbox" checked data-cat="${c.primary_category}">
+                        <span>${c.primary_category} <span style="color:var(--text3)">(${c.count})</span></span>
                     </div>
                 `).join('');
             } catch { /* non-critical */ }
@@ -88,6 +89,7 @@ function getRoute() {
     if (paperMatch) return { name: 'paper', id: paperMatch[1] };
     if (hash === '/trends') return { name: 'trends' };
     if (hash === '/settings') return { name: 'settings' };
+    if (hash === '/leaderboard') return { name: 'leaderboard' };
     return { name: 'feed' };
 }
 
@@ -115,6 +117,9 @@ async function route() {
         case 'settings':
             initSettings(app);
             break;
+        case 'leaderboard':
+            initLeaderboard(app, router);
+            break;
         default:
             initFeed(app, router);
     }
@@ -122,7 +127,7 @@ async function route() {
 
 // Theme toggle
 function initTheme() {
-    const saved = localStorage.getItem('rp_theme') || 'dark';
+    const saved = localStorage.getItem('rp_theme') || 'light';
     document.documentElement.dataset.theme = saved;
 
     document.getElementById('theme-toggle')?.addEventListener('click', () => {

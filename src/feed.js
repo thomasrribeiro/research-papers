@@ -3,7 +3,7 @@
  */
 
 import { fetchPapers, searchPapers } from './api.js';
-import { tagPill, diffBadge, scoreBadge, catBadge, factorBars, pdfLink, fmtDate, escapeHtml } from './components.js';
+import { tagPill, diffBadge, scoreBadge, catBadge, factorBars, pdfLink, fmtDate, escapeHtml, renderLatex } from './components.js';
 
 const SORT_OPTIONS = [
     { value: 'composite', label: 'Score' },
@@ -60,6 +60,7 @@ export function initFeed(app, router) {
         `;
 
         bindEvents();
+        renderLatex(app);
     }
 
     function renderPaperList(papers, total, date, search) {

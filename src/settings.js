@@ -131,8 +131,8 @@ function saveWeights(w) {
 function loadCategories() {
     try {
         const stored = localStorage.getItem('rp_categories');
-        return stored ? JSON.parse(stored) : ARXIV_CATEGORIES.slice(0, 10);
-    } catch { return ARXIV_CATEGORIES.slice(0, 10); }
+        return stored ? JSON.parse(stored) : [...ARXIV_CATEGORIES];
+    } catch { return [...ARXIV_CATEGORIES]; }
 }
 
 function saveCategories(cats) {

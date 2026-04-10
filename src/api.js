@@ -41,3 +41,7 @@ export function fetchCategories() {
 export function fetchStats() {
     return get('/api/stats');
 }
+
+export function fetchLeaderboard(limit = 50) {
+    return get(`/api/leaderboard?limit=${limit}`);
+}

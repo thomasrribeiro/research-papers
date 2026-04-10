@@ -3,7 +3,7 @@
  */
 
 import { fetchPaper } from './api.js';
-import { tagPill, diffBadge, scoreBadge, catBadge, scoreBreakdown, fmtDate, escapeHtml } from './components.js';
+import { tagPill, diffBadge, scoreBadge, catBadge, scoreBreakdown, fmtDate, escapeHtml, renderLatex } from './components.js';
 
 export async function initPaperDetail(app, router, paperId) {
     app.innerHTML = '<div class="loading-spinner">Loading paper...</div>';
@@ -101,6 +101,8 @@ export async function initPaperDetail(app, router, paperId) {
             </div>
         </div>` : ''}
     `;
+
+    renderLatex(app);
 
     // Back button
     app.querySelector('#back-btn')?.addEventListener('click', () => {

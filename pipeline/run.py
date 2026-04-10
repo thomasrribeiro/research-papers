@@ -23,15 +23,16 @@ from datetime import date
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import DAILY_TOP_N, ARXIV_LOOKBACK_HOURS
+from config import DAILY_TOP_N, ARXIV_LOOKBACK_HOURS, LEADERBOARD_SIZE
 from sources.arxiv import fetch_recent_papers
 from sources.semantic_scholar import enrich_papers as enrich_semantic_scholar
 from sources.openalex import enrich_papers as enrich_openalex
 from sources.altmetric import enrich_papers as enrich_altmetric
 from scoring import score_papers
 from summarizer import summarize_papers
+from leaderboard import fetch_top_cited
 from ingest import (
-    push_papers, push_metrics, push_summaries, push_digest,
+    push_papers, push_metrics, push_summaries, push_digest, push_leaderboard,
     log_pipeline_start, log_pipeline_complete
 )
 
@@ -111,6 +112,13 @@ async def run_pipeline():
         await log_pipeline_complete(run_id, stats, status='success')
         logger.info(f'=== Pipeline Complete: {stats} ===')
 
+        # Step 11: Leaderboard (runs after main pipeline; non-blocking on failure)
+        logger.info('Running leaderboard update...')
+        try:
+            await run_leaderboard()
+        except Exception as lb_err:
+            logger.error(f'Leaderboard step failed (non-fatal): {lb_err}')
+
     except Exception as e:
         error_msg = str(e)
         logger.error(f'Pipeline failed: {e}', exc_info=True)
@@ -121,5 +129,51 @@ async def run_pipeline():
         sys.exit(1)
 
 
+async def run_leaderboard():
+    """Fetch and push the leaderboard of top-cited papers."""
+    today = date.today().isoformat()
+    logger.info('=== Leaderboard Pipeline Starting ===')
+
+    try:
+        # Fetch top-cited papers from OpenAlex
+        logger.info(f'Fetching top {LEADERBOARD_SIZE} cited papers from OpenAlex')
+        papers = await fetch_top_cited(limit=LEADERBOARD_SIZE)
+        logger.info(f'Fetched {len(papers)} leaderboard papers')
+
+        if not papers:
+            logger.warning('No leaderboard papers fetched — aborting')
+            return
+
+        # Push papers (upsert) — updates existing entries with refreshed data
+        inserted_papers = await push_papers(papers)
+        logger.info(f'Upserted {inserted_papers} leaderboard papers')
+
+        # Push metrics (citation counts from OpenAlex are already on the paper dicts)
+        inserted_metrics = await push_metrics(papers)
+        logger.info(f'Pushed {inserted_metrics} metric records')
+
+        # Summarize papers that don't already have summaries
+        # (reuse existing summarize_papers; it skips papers with no abstract)
+        to_summarize = [p for p in papers if p.get('abstract')]
+        if to_summarize:
+            logger.info(f'Summarizing {len(to_summarize)} leaderboard papers with Claude')
+            summaries = await summarize_papers(to_summarize)
+            if summaries:
+                inserted_summaries = await push_summaries(summaries)
+                logger.info(f'Pushed {inserted_summaries} leaderboard summaries')
+
+        # Push the leaderboard snapshot
+        inserted_lb = await push_leaderboard(today, papers)
+        logger.info(f'Created leaderboard snapshot for {today} with {inserted_lb} entries')
+
+        logger.info('=== Leaderboard Pipeline Complete ===')
+
+    except Exception as e:
+        logger.error(f'Leaderboard pipeline failed: {e}', exc_info=True)
+
+
 if __name__ == '__main__':
-    asyncio.run(run_pipeline())
+    if '--leaderboard-only' in sys.argv:
+        asyncio.run(run_leaderboard())
+    else:
+        asyncio.run(run_pipeline())

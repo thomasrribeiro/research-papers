@@ -32,6 +32,21 @@ DAILY_TOP_N: int = int(os.environ.get('DAILY_TOP_N', '30'))
 ARXIV_LOOKBACK_HOURS: int = int(os.environ.get('ARXIV_LOOKBACK_HOURS', '48'))
 SEED_LOOKBACK_DAYS: int = int(os.environ.get('SEED_LOOKBACK_DAYS', '30'))
 
+# Leaderboard settings
+LEADERBOARD_SIZE: int = int(os.environ.get('LEADERBOARD_SIZE', '50'))
+# OpenAlex concept IDs to cover the same domains as arXiv categories
+LEADERBOARD_CONCEPTS: list[str] = [
+    'C154945302',  # Artificial intelligence
+    'C119857082',  # Machine learning
+    'C41008148',   # Computer science
+    'C55493867',   # Biology
+    'C121332964',  # Physics
+    'C33923547',   # Mathematics
+    'C162324750',  # Economics / Finance
+    'C71924100',   # Medicine
+    'C138496267',  # Statistics
+]
+
 # Claude model for summarization
 CLAUDE_MODEL: str = 'claude-sonnet-4-20250514'
 
