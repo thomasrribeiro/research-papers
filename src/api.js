@@ -42,6 +42,6 @@ export function fetchStats() {
     return get('/api/stats');
 }
 
-export function fetchLeaderboard(limit = 50) {
-    return get(`/api/leaderboard?limit=${limit}`);
+export function fetchLeaderboard(type = 'foundations', limit = 50) {
+    return get(`/api/leaderboard?type=${encodeURIComponent(type)}&limit=${limit}`);
 }

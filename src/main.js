@@ -89,7 +89,8 @@ function getRoute() {
     if (paperMatch) return { name: 'paper', id: paperMatch[1] };
     if (hash === '/trends') return { name: 'trends' };
     if (hash === '/settings') return { name: 'settings' };
-    if (hash === '/leaderboard') return { name: 'leaderboard' };
+    if (hash === '/foundations') return { name: 'foundations' };
+    if (hash === '/momentum') return { name: 'momentum' };
     return { name: 'feed' };
 }
 
@@ -117,8 +118,11 @@ async function route() {
         case 'settings':
             initSettings(app);
             break;
-        case 'leaderboard':
-            initLeaderboard(app, router);
+        case 'foundations':
+            initLeaderboard(app, router, 'foundations');
+            break;
+        case 'momentum':
+            initLeaderboard(app, router, 'momentum');
             break;
         default:
             initFeed(app, router);

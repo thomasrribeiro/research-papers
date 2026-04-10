@@ -1,11 +1,26 @@
 /**
- * Leaderboard page — top-cited papers of all time
+ * Leaderboard pages — two variants:
+ *   foundations: most-cited papers of all time (bedrock literature)
+ *   momentum:    foundational papers still accelerating (landmark + trending)
  */
 
 import { fetchLeaderboard } from './api.js';
-import { tagPill, diffBadge, scoreBadge, catBadge, factorBars, pdfLink, fmtDate, escapeHtml, renderLatex } from './components.js';
+import { tagPill, diffBadge, catBadge, pdfLink, fmtDate, escapeHtml, renderLatex } from './components.js';
 
-export function initLeaderboard(app, router) {
+const LIST_META = {
+    foundations: {
+        title: 'Foundations',
+        subtitle: 'Most-cited papers of all time · bedrock literature across the sciences',
+    },
+    momentum: {
+        title: 'Momentum',
+        subtitle: 'Landmark papers still gaining traction · foundational work on the rise',
+    },
+};
+
+export function initLeaderboard(app, router, listType = 'foundations') {
+    const meta = LIST_META[listType] || LIST_META.foundations;
+
     let state = {
         papers: [],
         loading: false,
@@ -14,8 +29,8 @@ export function initLeaderboard(app, router) {
     function render() {
         app.innerHTML = `
             <div class="page-header">
-                <span class="page-title">Leaderboard</span>
-                <span style="font-size:10px;color:var(--text3);align-self:center">Top-cited papers of all time · updates daily</span>
+                <span class="page-title">${meta.title}</span>
+                <span style="font-size:10px;color:var(--text3);align-self:center">${meta.subtitle}</span>
             </div>
 
             ${state.loading
@@ -31,20 +46,23 @@ export function initLeaderboard(app, router) {
     function renderPaperList(papers) {
         if (!papers.length) {
             return `<div class="empty-state">
-                <strong>No leaderboard data yet</strong>
-                The pipeline needs to run with the leaderboard flow to populate this list.
+                <strong>No ${meta.title.toLowerCase()} data yet</strong>
+                The pipeline needs to run the leaderboard flow to populate this list.
             </div>`;
         }
 
         const rows = papers.map((p, i) => paperRow(p, p.rank || i + 1));
         return `<div class="paper-list">${rows.join('')}</div>
-            <div style="margin-top:12px;font-size:10px;color:var(--text3)">${papers.length} high-impact papers</div>`;
+            <div style="margin-top:12px;font-size:10px;color:var(--text3)">${papers.length} papers</div>`;
     }
 
     function paperRow(p, rank) {
         const tags = (p.tags || []).slice(0, 3).map(tagPill).join('');
         const citationLabel = p.citation_count != null
             ? `<span style="font-size:10px;color:var(--text3)">${p.citation_count.toLocaleString()} citations</span>`
+            : '';
+        const scoreLabel = listType === 'momentum' && p.score != null
+            ? `<span style="font-size:10px;color:var(--gold);font-weight:700">momentum ${p.score.toFixed(2)}</span>`
             : '';
         return `
             <div class="paper-row" data-id="${escapeHtml(p.id)}" role="button" tabindex="0">
@@ -53,6 +71,7 @@ export function initLeaderboard(app, router) {
                     <div class="paper-title">${escapeHtml(p.title)}</div>
                     ${p.tldr ? `<div class="paper-tldr">${escapeHtml(p.tldr)}</div>` : ''}
                     <div class="paper-footer">
+                        ${scoreLabel}
                         ${citationLabel}
                         ${catBadge(p.primary_category)}
                         ${p.published_date ? `<span style="font-size:10px;color:var(--text3)">${fmtDate(p.published_date)}</span>` : ''}
@@ -81,10 +100,10 @@ export function initLeaderboard(app, router) {
         render();
 
         try {
-            const data = await fetchLeaderboard(50);
+            const data = await fetchLeaderboard(listType, 50);
             state.papers = data.papers || [];
         } catch (err) {
-            console.error('Leaderboard load error:', err);
+            console.error(`${meta.title} load error:`, err);
             state.papers = [];
         }
 

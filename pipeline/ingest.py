@@ -104,20 +104,21 @@ async def push_digest(date: str, ranked_papers: list[dict]) -> int:
     return result.get('inserted', 0)
 
 
-async def push_leaderboard(snapshot_date: str, ranked_papers: list[dict]) -> int:
-    """Push leaderboard snapshot to /api/ingest/leaderboard."""
+async def push_leaderboard(snapshot_date: str, list_type: str, ranked_papers: list[dict]) -> int:
+    """Push a leaderboard snapshot (foundations or momentum) to /api/ingest/leaderboard."""
     entries = [
         {
             'paper_id': p.get('arxiv_id') or p.get('id'),
             'rank': i + 1,
-            'citation_count': p.get('citation_count', 0)
+            'citation_count': p.get('citation_count', 0),
+            'score': p.get('momentum_score') if list_type == 'momentum' else None,
         }
         for i, p in enumerate(ranked_papers)
     ]
     async with httpx.AsyncClient(timeout=30.0) as client:
         result = await _post_with_retry(
             client, '/api/ingest/leaderboard',
-            {'snapshot_date': snapshot_date, 'entries': entries}
+            {'snapshot_date': snapshot_date, 'list_type': list_type, 'entries': entries}
         )
     return result.get('inserted', 0)
 

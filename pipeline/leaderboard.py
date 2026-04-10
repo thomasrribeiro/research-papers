@@ -1,12 +1,15 @@
 """
-Fetch top-cited papers from OpenAlex for the Leaderboard.
+Fetch top-cited papers from OpenAlex and rank them two ways:
+  - Foundations: raw all-time citation count (classic canon)
+  - Momentum:   log-composite favoring recent velocity and acceleration
 
-Uses OpenAlex (no API key required) to retrieve the highest-cited papers
-across the relevant disciplines, sorted by citation count descending.
+Uses OpenAlex (no API key required) via the polite-pool email header.
 """
 
 import asyncio
 import logging
+import math
+from datetime import date
 
 import httpx
 
@@ -15,7 +18,14 @@ from config import LEADERBOARD_CONCEPTS, LEADERBOARD_SIZE, OPENALEX_EMAIL
 logger = logging.getLogger(__name__)
 
 OPENALEX_URL = 'https://api.openalex.org/works'
-RESULTS_PER_CONCEPT = 100  # fetch per concept, then deduplicate and truncate
+RESULTS_PER_CONCEPT = 200  # fetch a larger pool so momentum has candidates outside the raw top-50
+
+# Momentum score weights (see README below)
+W_LANDMARK = 0.35
+W_HOT = 0.40
+W_MOMENTUM = 0.25
+MOMENTUM_CLAMP = 5.0   # cap acceleration ratio
+RECENT_WINDOW_YEARS = 2
 
 
 def _reconstruct_abstract(inverted_index: dict | None) -> str:
@@ -68,7 +78,10 @@ def _parse_openalex_work(work: dict) -> dict | None:
     if not pdf_url and doi:
         pdf_url = f'https://doi.org/{doi}'
 
-    citation_count = work.get('cited_by_count', 0)
+    citation_count = work.get('cited_by_count', 0) or 0
+
+    # Yearly breakdown — list of {year, cited_by_count}
+    counts_by_year = work.get('counts_by_year') or []
 
     return {
         'id': openalex_id,
@@ -83,20 +96,67 @@ def _parse_openalex_work(work: dict) -> dict | None:
         'primary_category': primary_category,
         'pdf_url': pdf_url,
         'citation_count': citation_count,
+        'counts_by_year': counts_by_year,
         'source': 'leaderboard',
     }
 
 
-async def fetch_top_cited(limit: int = LEADERBOARD_SIZE) -> list[dict]:
+def _compute_momentum_score(paper: dict) -> float:
     """
-    Fetch top-cited papers across key research domains using OpenAlex.
-    Returns a deduplicated list sorted by citation_count descending.
+    Composite score for the Momentum list.
+
+    landmark   = log(1 + total_citations)           # foundational weight
+    hot        = log(1 + citations_last_2y)         # currently-hot weight
+    velocity   = citations_last_2y / 2              # per year, recent
+    avg_hist   = total_citations / years_old        # per year, lifetime avg
+    momentum   = velocity / max(avg_hist, 1)        # acceleration ratio (>1 = gaining)
+
+    score = 0.35*landmark + 0.40*hot + 0.25*log(1 + min(momentum, 5))
+    """
+    total = paper.get('citation_count', 0) or 0
+    if total <= 0:
+        return 0.0
+
+    # Publication year
+    pub_date = paper.get('published_date') or ''
+    try:
+        pub_year = int(pub_date[:4]) if pub_date else date.today().year
+    except ValueError:
+        pub_year = date.today().year
+
+    current_year = date.today().year
+    years_old = max(1, current_year - pub_year)
+
+    # Citations in the last RECENT_WINDOW_YEARS *complete* years (exclude current partial year)
+    counts = paper.get('counts_by_year') or []
+    recent_cutoff = current_year - RECENT_WINDOW_YEARS  # e.g., 2024 if current is 2026
+    recent_citations = sum(
+        (entry.get('cited_by_count') or 0)
+        for entry in counts
+        if recent_cutoff <= (entry.get('year') or 0) < current_year
+    )
+
+    velocity = recent_citations / RECENT_WINDOW_YEARS
+    avg_hist = total / years_old
+    momentum = velocity / max(avg_hist, 1.0)
+
+    landmark = math.log1p(total)
+    hot = math.log1p(recent_citations)
+    momentum_term = math.log1p(min(momentum, MOMENTUM_CLAMP))
+
+    return (W_LANDMARK * landmark) + (W_HOT * hot) + (W_MOMENTUM * momentum_term)
+
+
+async def fetch_candidate_pool() -> list[dict]:
+    """
+    Fetch a large candidate pool of highly-cited papers across all relevant concepts.
+    Returns a deduplicated list — no ranking applied.
     """
     all_papers: dict[str, dict] = {}  # openalex_id → paper
 
     select_fields = (
         'id,title,abstract_inverted_index,doi,publication_date,'
-        'authorships,cited_by_count,primary_location,concepts'
+        'authorships,cited_by_count,counts_by_year,primary_location,concepts'
     )
 
     async with httpx.AsyncClient(
@@ -130,9 +190,21 @@ async def fetch_top_cited(limit: int = LEADERBOARD_SIZE) -> list[dict]:
 
             await asyncio.sleep(1.0)  # polite pool rate limit
 
-    # Sort by citation_count descending, truncate to limit
-    sorted_papers = sorted(all_papers.values(), key=lambda p: p.get('citation_count', 0), reverse=True)
-    top = sorted_papers[:limit]
+    logger.info(f'Candidate pool: {len(all_papers)} unique papers')
+    return list(all_papers.values())
 
-    logger.info(f'Leaderboard: {len(all_papers)} unique papers fetched, returning top {len(top)}')
-    return top
+
+def rank_foundations(pool: list[dict], limit: int = LEADERBOARD_SIZE) -> list[dict]:
+    """Rank the candidate pool by raw all-time citation count."""
+    sorted_papers = sorted(pool, key=lambda p: p.get('citation_count', 0) or 0, reverse=True)
+    return sorted_papers[:limit]
+
+
+def rank_momentum(pool: list[dict], limit: int = LEADERBOARD_SIZE) -> list[dict]:
+    """Rank the candidate pool by the momentum composite score."""
+    scored = []
+    for p in pool:
+        p['momentum_score'] = _compute_momentum_score(p)
+        scored.append(p)
+    sorted_papers = sorted(scored, key=lambda p: p.get('momentum_score', 0.0), reverse=True)
+    return sorted_papers[:limit]

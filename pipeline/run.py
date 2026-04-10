@@ -30,7 +30,7 @@ from sources.openalex import enrich_papers as enrich_openalex
 from sources.altmetric import enrich_papers as enrich_altmetric
 from scoring import score_papers
 from summarizer import summarize_papers
-from leaderboard import fetch_top_cited
+from leaderboard import fetch_candidate_pool, rank_foundations, rank_momentum
 from ingest import (
     push_papers, push_metrics, push_summaries, push_digest, push_leaderboard,
     log_pipeline_start, log_pipeline_complete
@@ -130,31 +130,48 @@ async def run_pipeline():
 
 
 async def run_leaderboard():
-    """Fetch and push the leaderboard of top-cited papers."""
+    """Fetch candidate pool and produce both Foundations and Momentum leaderboards."""
     today = date.today().isoformat()
     logger.info('=== Leaderboard Pipeline Starting ===')
 
     try:
-        # Fetch top-cited papers from OpenAlex
-        logger.info(f'Fetching top {LEADERBOARD_SIZE} cited papers from OpenAlex')
-        papers = await fetch_top_cited(limit=LEADERBOARD_SIZE)
-        logger.info(f'Fetched {len(papers)} leaderboard papers')
-
-        if not papers:
-            logger.warning('No leaderboard papers fetched — aborting')
+        # Step 1: fetch candidate pool (large, unranked)
+        logger.info('Fetching leaderboard candidate pool from OpenAlex')
+        pool = await fetch_candidate_pool()
+        if not pool:
+            logger.warning('Empty candidate pool — aborting leaderboard')
             return
 
-        # Push papers (upsert) — updates existing entries with refreshed data
-        inserted_papers = await push_papers(papers)
+        # Step 2: rank two ways
+        foundations = rank_foundations(pool, limit=LEADERBOARD_SIZE)
+        momentum = rank_momentum(pool, limit=LEADERBOARD_SIZE)
+        logger.info(f'Ranked: {len(foundations)} foundations, {len(momentum)} momentum')
+
+        # Log sample top entries for each list
+        if foundations:
+            top = foundations[0]
+            logger.info(f'  Foundations #1: {top["citation_count"]} cites — {top["title"][:60]}')
+        if momentum:
+            top = momentum[0]
+            logger.info(f'  Momentum #1: score={top.get("momentum_score", 0):.3f} — {top["title"][:60]}')
+
+        # Step 3: union of all papers to upsert (foundations ∪ momentum, deduped)
+        seen_ids: set[str] = set()
+        all_papers: list[dict] = []
+        for p in foundations + momentum:
+            pid = p.get('id')
+            if pid and pid not in seen_ids:
+                seen_ids.add(pid)
+                all_papers.append(p)
+
+        inserted_papers = await push_papers(all_papers)
         logger.info(f'Upserted {inserted_papers} leaderboard papers')
 
-        # Push metrics (citation counts from OpenAlex are already on the paper dicts)
-        inserted_metrics = await push_metrics(papers)
+        inserted_metrics = await push_metrics(all_papers)
         logger.info(f'Pushed {inserted_metrics} metric records')
 
-        # Summarize papers that don't already have summaries
-        # (reuse existing summarize_papers; it skips papers with no abstract)
-        to_summarize = [p for p in papers if p.get('abstract')]
+        # Step 4: summarize (only papers with abstracts)
+        to_summarize = [p for p in all_papers if p.get('abstract')]
         if to_summarize:
             logger.info(f'Summarizing {len(to_summarize)} leaderboard papers with Claude')
             summaries = await summarize_papers(to_summarize)
@@ -162,9 +179,12 @@ async def run_leaderboard():
                 inserted_summaries = await push_summaries(summaries)
                 logger.info(f'Pushed {inserted_summaries} leaderboard summaries')
 
-        # Push the leaderboard snapshot
-        inserted_lb = await push_leaderboard(today, papers)
-        logger.info(f'Created leaderboard snapshot for {today} with {inserted_lb} entries')
+        # Step 5: push both snapshots
+        inserted_f = await push_leaderboard(today, 'foundations', foundations)
+        logger.info(f'Foundations snapshot for {today}: {inserted_f} entries')
+
+        inserted_m = await push_leaderboard(today, 'momentum', momentum)
+        logger.info(f'Momentum snapshot for {today}: {inserted_m} entries')
 
         logger.info('=== Leaderboard Pipeline Complete ===')
 
