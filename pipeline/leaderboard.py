@@ -78,7 +78,7 @@ def _parse_openalex_work(work: dict) -> dict | None:
     if doi:
         doi = doi.replace('https://doi.org/', '')
 
-    abstract = _reconstruct_abstract(work.get('abstract_inverted_index'))
+    abstract = _HTML_TAG_RE.sub('', _reconstruct_abstract(work.get('abstract_inverted_index')))
 
     pub_date = work.get('publication_date') or ''
     if len(pub_date) > 10:
@@ -158,7 +158,7 @@ def _parse_s2_paper(item: dict) -> dict | None:
     # Prefer arXiv ID as DB key (consistent with feed papers); fall back to S2 ID
     db_id = arxiv_id if arxiv_id else f'S2:{paper_id}'
 
-    abstract = (item.get('abstract') or '').strip()
+    abstract = _HTML_TAG_RE.sub('', (item.get('abstract') or '')).strip()
 
     pub_date = item.get('publicationDate') or ''
     if not pub_date:

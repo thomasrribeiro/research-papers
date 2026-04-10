@@ -79,6 +79,28 @@ export function scoreBreakdown(breakdown) {
     return `<div class="score-breakdown">${rows.join('')}</div>`;
 }
 
+/** Metrics grid for leaderboard papers (no factor_breakdown available). */
+export function metricsGrid(paper) {
+    const stats = [
+        paper.citation_count != null && { label: 'Total citations', val: (paper.citation_count || 0).toLocaleString() },
+        paper.citation_velocity != null && paper.citation_velocity > 0 && { label: 'Velocity', val: `${(paper.citation_velocity || 0).toFixed(1)}/mo` },
+        paper.influential_citations != null && paper.influential_citations > 0 && { label: 'Influential cites', val: (paper.influential_citations || 0).toLocaleString() },
+        paper.altmetric_score != null && paper.altmetric_score > 0 && { label: 'Altmetric', val: (paper.altmetric_score || 0).toFixed(1) },
+        paper.twitter_count != null && paper.twitter_count > 0 && { label: 'Tweets', val: paper.twitter_count },
+        paper.news_count != null && paper.news_count > 0 && { label: 'News', val: paper.news_count },
+        paper.h_index_avg != null && paper.h_index_avg > 0 && { label: 'Avg author h-index', val: (paper.h_index_avg || 0).toFixed(1) },
+    ].filter(Boolean);
+
+    if (!stats.length) return '<div style="font-size:11px;color:var(--text3)">No metrics available</div>';
+
+    return `<div class="score-breakdown">${stats.map(s => `
+        <div class="score-factor-row">
+            <span class="score-factor-name">${s.label}</span>
+            <span class="score-factor-val" style="margin-left:auto">${escapeHtml(String(s.val))}</span>
+        </div>
+    `).join('')}</div>`;
+}
+
 export function pdfLink(url, text = 'PDF') {
     if (!url) return '';
     return `<a href="${url}" target="_blank" rel="noopener" class="pdf-link" onclick="event.stopPropagation()">${text}</a>`;
@@ -98,6 +120,11 @@ export function fmtDate(dateStr) {
 
 export function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Strip HTML/XML tags from a string (for abstracts with JATS/MathML markup). */
+export function stripHtml(str) {
+    return String(str || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
 export function renderLatex(container) {

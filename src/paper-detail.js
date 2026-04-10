@@ -3,7 +3,7 @@
  */
 
 import { fetchPaper } from './api.js';
-import { tagPill, diffBadge, scoreBadge, catBadge, scoreBreakdown, fmtDate, escapeHtml, renderLatex } from './components.js';
+import { tagPill, diffBadge, scoreBadge, catBadge, scoreBreakdown, metricsGrid, fmtDate, escapeHtml, stripHtml, renderLatex } from './components.js';
 
 export async function initPaperDetail(app, router, paperId) {
     app.innerHTML = '<div class="loading-spinner">Loading paper...</div>';
@@ -49,19 +49,12 @@ export async function initPaperDetail(app, router, paperId) {
 
         <div class="detail-section">
             <div class="detail-section-label">Abstract</div>
-            <div class="detail-abstract">${escapeHtml(paper.abstract)}</div>
+            <div class="detail-abstract">${escapeHtml(stripHtml(paper.abstract))}</div>
         </div>
 
         <div class="detail-section">
-            <div class="detail-section-label">Score Breakdown</div>
-            ${scoreBreakdown(paper.factor_breakdown)}
-            <div style="margin-top:10px;display:flex;gap:16px;font-size:11px;color:var(--text3)">
-                ${paper.citation_count != null ? `<span>Citations: <strong style="color:var(--text2)">${paper.citation_count}</strong></span>` : ''}
-                ${paper.citation_velocity != null ? `<span>Velocity: <strong style="color:var(--text2)">${(paper.citation_velocity || 0).toFixed(1)}/mo</strong></span>` : ''}
-                ${paper.altmetric_score ? `<span>Altmetric: <strong style="color:var(--text2)">${(paper.altmetric_score || 0).toFixed(1)}</strong></span>` : ''}
-                ${paper.twitter_count ? `<span>Tweets: <strong style="color:var(--text2)">${paper.twitter_count}</strong></span>` : ''}
-                ${paper.news_count ? `<span>News: <strong style="color:var(--text2)">${paper.news_count}</strong></span>` : ''}
-            </div>
+            <div class="detail-section-label">${paper.factor_breakdown ? 'Score Breakdown' : 'Paper Metrics'}</div>
+            ${paper.factor_breakdown ? scoreBreakdown(paper.factor_breakdown) : metricsGrid(paper)}
         </div>
 
         ${authors.length ? `
