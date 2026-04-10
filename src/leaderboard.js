@@ -9,12 +9,12 @@ import { tagPill, diffBadge, catBadge, pdfLink, fmtDate, escapeHtml, renderLatex
 
 const LIST_META = {
     foundations: {
-        title: 'Foundations',
-        subtitle: 'Most-cited papers of all time · bedrock literature across the sciences',
+        title: 'Most Cited',
+        subtitle: 'Highest all-time citation counts · the bedrock literature every field builds on',
     },
     momentum: {
-        title: 'Momentum',
-        subtitle: 'Landmark papers still gaining traction · foundational work on the rise',
+        title: 'Acceleration',
+        subtitle: 'Papers whose citation rate is accelerating · second-derivative signal for what's rising fastest',
     },
 };
 
@@ -46,7 +46,7 @@ export function initLeaderboard(app, router, listType = 'foundations') {
     function renderPaperList(papers) {
         if (!papers.length) {
             return `<div class="empty-state">
-                <strong>No ${meta.title.toLowerCase()} data yet</strong>
+                <strong>No data yet for ${meta.title}</strong>
                 The pipeline needs to run the leaderboard flow to populate this list.
             </div>`;
         }
@@ -62,7 +62,7 @@ export function initLeaderboard(app, router, listType = 'foundations') {
             ? `<span style="font-size:10px;color:var(--text3)">${p.citation_count.toLocaleString()} citations</span>`
             : '';
         const scoreLabel = listType === 'momentum' && p.score != null
-            ? `<span style="font-size:10px;color:var(--gold);font-weight:700">momentum ${p.score.toFixed(2)}</span>`
+            ? `<span style="font-size:10px;color:var(--gold);font-weight:700">accel ${p.score.toFixed(2)}</span>`
             : '';
         return `
             <div class="paper-row" data-id="${escapeHtml(p.id)}" role="button" tabindex="0">

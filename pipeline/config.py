@@ -51,6 +51,8 @@ LEADERBOARD_CONCEPTS: list[str] = [
     'C50644808',   # Artificial neural network
     'C31972630',   # Computer vision
     'C204321447',  # Natural language processing
+    # Chemistry — home of Lowry, Bradford, other high-citation bio-methods
+    'C185592680',  # Chemistry
 ]
 
 # Claude model for summarization
