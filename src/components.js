@@ -46,7 +46,6 @@ export function factorBars(breakdown) {
     const factors = [
         { key: 'citation_vel', label: 'cit' },
         { key: 'altmetric', label: 'alt' },
-        { key: 'bridge', label: 'bridge' },
         { key: 'author_rep', label: 'rep' },
     ];
     const bars = factors.map(f => {
@@ -63,7 +62,6 @@ export function scoreBreakdown(breakdown) {
     const factors = [
         { key: 'citation_vel', label: 'Citation velocity' },
         { key: 'altmetric', label: 'Social attention' },
-        { key: 'bridge', label: 'Cross-domain' },
         { key: 'author_rep', label: 'Author reputation' },
         { key: 'time_decay', label: 'Recency' },
     ];

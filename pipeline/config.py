@@ -21,10 +21,9 @@ WORKER_URL: str = os.environ.get('WORKER_URL', 'http://localhost:8787').rstrip('
 PIPELINE_API_KEY: str = os.environ.get('PIPELINE_API_KEY', 'dev-pipeline-key')
 
 # Scoring weights (must sum to 1.0)
-WEIGHT_CITATION_VEL: float = float(os.environ.get('WEIGHT_CITATION_VEL', '0.25'))
-WEIGHT_ALTMETRIC: float = float(os.environ.get('WEIGHT_ALTMETRIC', '0.25'))
-WEIGHT_BRIDGE: float = float(os.environ.get('WEIGHT_BRIDGE', '0.30'))
-WEIGHT_AUTHOR_REP: float = float(os.environ.get('WEIGHT_AUTHOR_REP', '0.20'))
+WEIGHT_CITATION_VEL: float = float(os.environ.get('WEIGHT_CITATION_VEL', '0.35'))
+WEIGHT_ALTMETRIC: float = float(os.environ.get('WEIGHT_ALTMETRIC', '0.35'))
+WEIGHT_AUTHOR_REP: float = float(os.environ.get('WEIGHT_AUTHOR_REP', '0.30'))
 HALF_LIFE_DAYS: int = int(os.environ.get('HALF_LIFE_DAYS', '180'))
 
 # Pipeline settings
@@ -57,17 +56,6 @@ LEADERBOARD_CONCEPTS: list[str] = [
 
 # Claude model for summarization
 CLAUDE_MODEL: str = 'claude-sonnet-4-20250514'
-
-# Domain classification for bridge score
-STEM_DOMAINS: set[str] = {
-    'Physics', 'Mathematics', 'Computer Science', 'Biology',
-    'Chemistry', 'Engineering', 'Materials Science', 'Environmental Science'
-}
-APPLIED_DOMAINS: set[str] = {
-    'Economics', 'Political Science', 'Business', 'Sociology',
-    'Medicine', 'Finance', 'Public Health', 'Geography',
-    'Law', 'History', 'Philosophy'
-}
 
 # Tag categories for Claude to assign
 SUMMARY_TAGS: list[str] = [

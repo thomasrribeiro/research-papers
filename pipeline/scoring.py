@@ -2,10 +2,9 @@
 Multi-factor composite scoring engine.
 
 Computes a score in [0, 1] for each paper based on:
-  - Citation velocity (25%)
-  - Altmetric attention (25%)
-  - Cross-domain bridge score (30%)
-  - Author reputation via h-index (20%)
+  - Citation velocity (35%)
+  - Altmetric attention (35%)
+  - Author reputation via h-index (30%)
 
 All factors are min-max normalized across the daily batch before weighting.
 A time-decay factor is applied to the composite score.
@@ -16,8 +15,8 @@ import logging
 from statistics import median
 
 from config import (
-    WEIGHT_CITATION_VEL, WEIGHT_ALTMETRIC, WEIGHT_BRIDGE, WEIGHT_AUTHOR_REP,
-    HALF_LIFE_DAYS, STEM_DOMAINS, APPLIED_DOMAINS
+    WEIGHT_CITATION_VEL, WEIGHT_ALTMETRIC, WEIGHT_AUTHOR_REP,
+    HALF_LIFE_DAYS
 )
 
 logger = logging.getLogger(__name__)
@@ -62,8 +61,6 @@ def score_papers(papers: list[dict]) -> list[dict]:
     today = date_mod.today()
 
     for i, paper in enumerate(papers):
-        bridge = _bridge_score(paper)
-
         # Time decay: newer papers score higher
         pub = paper.get('published_date', '')
         try:
@@ -76,7 +73,6 @@ def score_papers(papers: list[dict]) -> list[dict]:
         raw_composite = (
             WEIGHT_CITATION_VEL * norm_cv[i] +
             WEIGHT_ALTMETRIC * norm_am[i] +
-            WEIGHT_BRIDGE * bridge +
             WEIGHT_AUTHOR_REP * norm_hi[i]
         )
         composite = raw_composite * time_decay
@@ -85,7 +81,6 @@ def score_papers(papers: list[dict]) -> list[dict]:
         paper['factor_breakdown'] = {
             'citation_vel': round(norm_cv[i], 4),
             'altmetric': round(norm_am[i], 4),
-            'bridge': round(bridge, 4),
             'author_rep': round(norm_hi[i], 4),
             'time_decay': round(time_decay, 4)
         }
@@ -93,22 +88,6 @@ def score_papers(papers: list[dict]) -> list[dict]:
     papers.sort(key=lambda p: p['composite_score'], reverse=True)
     return papers
 
-
-def _bridge_score(paper: dict) -> float:
-    """
-    Compute cross-domain bridge score based on fields of study and concepts.
-    Papers that span STEM and applied domains score highest.
-    """
-    fields = set(paper.get('fields_of_study', []) or [])
-    concepts = set(paper.get('openalex_concepts', []) or [])
-    all_domains = fields | concepts
-
-    stem_count = len(all_domains & STEM_DOMAINS)
-    applied_count = len(all_domains & APPLIED_DOMAINS)
-
-    # Applied domains weighted 2x to reward cross-domain reach
-    raw = stem_count + applied_count * 2
-    return min(1.0, raw / 6.0)
 
 
 def _minmax_normalize(values: list[float]) -> list[float]:
