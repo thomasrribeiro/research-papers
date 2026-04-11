@@ -14,7 +14,7 @@ const LIST_META = {
     },
     momentum: {
         title: 'Acceleration',
-        subtitle: 'Papers whose citation rate is accelerating · second-derivative signal for what's rising fastest',
+        subtitle: `Papers whose citation rate is accelerating \u00B7 second-derivative signal for what\u2019s rising fastest`,
     },
 };
 

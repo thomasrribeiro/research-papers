@@ -53,8 +53,8 @@ export async function initPaperDetail(app, router, paperId) {
         </div>
 
         <div class="detail-section">
-            <div class="detail-section-label">${paper.factor_breakdown ? 'Score Breakdown' : 'Paper Metrics'}</div>
-            ${paper.factor_breakdown ? scoreBreakdown(paper.factor_breakdown) : metricsGrid(paper)}
+            <div class="detail-section-label">${paper.factor_breakdown && Object.keys(paper.factor_breakdown).length ? 'Score Breakdown' : 'Paper Metrics'}</div>
+            ${paper.factor_breakdown && Object.keys(paper.factor_breakdown).length ? scoreBreakdown(paper.factor_breakdown) : metricsGrid(paper)}
         </div>
 
         ${authors.length ? `
