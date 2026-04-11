@@ -184,6 +184,22 @@ export function initFeed(app, router) {
                 });
                 state.papers = data.papers || [];
                 state.total = data.total || 0;
+
+                // If today has no papers yet, silently fall back to the most recent
+                // available date so the feed never shows empty after a pipeline run.
+                const dates = router.state?.availableDates || [];
+                if (!state.papers.length && dates.length && dates[0] !== state.date) {
+                    state.date = dates[0];
+                    data = await fetchPapers({
+                        date: state.date,
+                        sort: state.sort,
+                        tag: state.tag || undefined,
+                        minScore: state.minScore,
+                        limit: 50
+                    });
+                    state.papers = data.papers || [];
+                    state.total = data.total || 0;
+                }
             }
         } catch (err) {
             console.error('Feed load error:', err);
@@ -199,7 +215,8 @@ export function initFeed(app, router) {
 }
 
 function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    // Use Pacific Time (America/Los_Angeles) — matches pipeline digest dates
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 }
 
 function getTagOptions() {

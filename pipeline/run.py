@@ -17,7 +17,7 @@ Steps:
 import asyncio
 import logging
 import sys
-from datetime import date
+from datetime import datetime, timezone, timedelta
 
 # Allow running from the pipeline/ directory
 import os
@@ -45,8 +45,18 @@ logging.basicConfig(
 logger = logging.getLogger('pipeline')
 
 
+def _pacific_today() -> str:
+    """Return today's date in America/Los_Angeles (Pacific Time) as YYYY-MM-DD."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo('America/Los_Angeles')).date().isoformat()
+    except Exception:
+        # Fallback: UTC-7 (PDT); close enough if zoneinfo unavailable
+        return datetime.now(timezone(timedelta(hours=-7))).date().isoformat()
+
+
 async def run_pipeline():
-    today = date.today().isoformat()
+    today = _pacific_today()
     stats = {'date': today, 'papers_fetched': 0, 'papers_scored': 0, 'papers_summarized': 0}
     run_id = 0
     error_msg = None
@@ -142,7 +152,7 @@ async def run_pipeline():
 
 async def run_leaderboard():
     """Fetch candidate pool and produce both Foundations and Momentum leaderboards."""
-    today = date.today().isoformat()
+    today = _pacific_today()
     logger.info('=== Leaderboard Pipeline Starting ===')
 
     try:
