@@ -439,40 +439,86 @@ async def load_landmark_seeds() -> list[dict]:
 
 async def _enrich_with_openalex_counts(papers: list[dict]) -> None:
     """
-    For S2-only / seed papers that have a DOI but empty counts_by_year, do a
-    targeted OpenAlex lookup to get per-year citation data. This is required so
-    papers like AIAYN, BERT, and AlphaFold2 (which arrive via S2 with no yearly
-    breakdown) can receive a momentum score.
+    For S2-only / seed papers with empty counts_by_year, fetch per-year citation
+    data from OpenAlex so momentum scores can be computed.
+
+    Strategy (in order):
+    1. DOI lookup — direct, exact.  May fail if OpenAlex splits versions and the
+       DOI resolves to an arXiv preprint record with few citations (e.g. AIAYN's
+       arXiv DOI returns ~6k instead of ~172k).
+    2. Title search — if the DOI lookup returns a record whose cited_by_count is
+       less than 10% of what S2 reports, retry by title and pick the most-cited
+       result.  This finds the published/conference version of landmark papers.
     """
-    needs = [p for p in papers if p.get('doi') and not p.get('counts_by_year')]
+    needs = [p for p in papers if not p.get('counts_by_year')]
     if not needs:
         return
 
     logger.info(f'OpenAlex counts enrichment: {len(needs)} S2/seed papers')
-    select_fields = 'id,cited_by_count,counts_by_year'
+    select_fields = 'id,cited_by_count,counts_by_year,title'
 
     async with httpx.AsyncClient(
         timeout=30.0,
         headers={'User-Agent': f'ResearchPapersPipeline/1.0 (mailto:{OPENALEX_EMAIL})'}
     ) as client:
         for p in needs:
-            doi = p['doi']
-            try:
-                resp = await client.get(
-                    f'{OPENALEX_URL}/https://doi.org/{doi}',
-                    params={'select': select_fields, 'mailto': OPENALEX_EMAIL},
-                )
-                if resp.status_code == 404:
-                    logger.debug(f'OpenAlex: DOI not found: {doi}')
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
-                counts = data.get('counts_by_year') or []
+            doi = p.get('doi') or ''
+            title = p.get('title', '')
+            known_cites = p.get('citation_count') or 0
+            oa_work = None
+
+            # ── Step 1: DOI lookup ──────────────────────────────────────────
+            if doi:
+                try:
+                    resp = await client.get(
+                        f'{OPENALEX_URL}/https://doi.org/{doi}',
+                        params={'select': select_fields, 'mailto': OPENALEX_EMAIL},
+                    )
+                    if resp.status_code == 200:
+                        oa_work = resp.json()
+                    elif resp.status_code != 404:
+                        resp.raise_for_status()
+                except httpx.HTTPError as e:
+                    logger.warning(f'OA DOI lookup failed for {doi}: {e}')
+
+            # ── Step 2: Title search fallback ───────────────────────────────
+            # If no DOI, or DOI gave a record with far fewer cites than S2 (version split),
+            # search by title and use the highest-cited match.
+            oa_cites = (oa_work or {}).get('cited_by_count') or 0
+            needs_title_search = not oa_work or (known_cites > 5000 and oa_cites < known_cites * 0.1)
+
+            if needs_title_search and title:
+                try:
+                    resp = await client.get(
+                        OPENALEX_URL,
+                        params={
+                            'search': title,
+                            'filter': 'is_paratext:false',
+                            'sort': 'cited_by_count:desc',
+                            'per-page': 5,
+                            'select': select_fields,
+                            'mailto': OPENALEX_EMAIL,
+                        },
+                    )
+                    if resp.status_code == 200:
+                        results = resp.json().get('results') or []
+                        if results:
+                            # Pick the result with the most citations (published version)
+                            best = max(results, key=lambda w: w.get('cited_by_count') or 0)
+                            if (best.get('cited_by_count') or 0) > oa_cites:
+                                oa_work = best
+                except httpx.HTTPError as e:
+                    logger.warning(f'OA title search failed for {title[:60]!r}: {e}')
+
+            if oa_work:
+                counts = oa_work.get('counts_by_year') or []
                 if counts:
                     p['counts_by_year'] = counts
-                    logger.debug(f'OA counts enriched: {p["title"][:60]!r}')
-            except httpx.HTTPError as e:
-                logger.warning(f'OA counts enrichment failed for {doi}: {e}')
+                    logger.info(
+                        f'OA enriched: {p["title"][:60]!r} '
+                        f'({oa_work.get("cited_by_count",0):,} OA cites vs {known_cites:,} S2)'
+                    )
+
             await asyncio.sleep(0.5)  # polite pool
 
 
